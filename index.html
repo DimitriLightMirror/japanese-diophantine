@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Japanese Diophantine Factorizer</title>
+<meta name="description" content="Enter a semiprime n, find its perfect base B, and watch p times q drawn as Japanese stick multiplication in base B.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="seal" aria-hidden="true">因数</div>
+  <div class="header-text">
+    <h1>Japanese Diophantine Factorizer</h1>
+    <p class="subtitle">
+      Give a semiprime <em>n = p·q</em>. The solver searches the carry equations for a
+      <strong>perfect base</strong> <em>B</em> where both carries vanish, then draws
+      <em>p × q</em> as Japanese stick multiplication in that base.
+    </p>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel" id="input-panel">
+    <div class="input-row">
+      <label for="n-input">n</label>
+      <input id="n-input" type="text" inputmode="numeric" spellcheck="false"
+             placeholder="e.g. 13590925537151119" autocomplete="off">
+      <button id="btn-factor">Factorize</button>
+    </div>
+    <div class="examples">
+      <span class="examples-label">Examples</span>
+      <button class="chip" data-n="13590925537151119">54 bit · q/p ≈ 5/4</button>
+      <button class="chip" data-n="21481066030206773">54 bit · q/p ≈ 5/4</button>
+      <button class="chip" data-n="37598511150448663">55 bit · q/p ≈ 5/4</button>
+      <button class="chip" data-n="6010331033629603">53 bit · q/p ≈ 5/4</button>
+    </div>
+    <details class="manual">
+      <summary>Already know the factors? Enter p and q directly</summary>
+      <div class="input-row manual-row">
+        <label for="p-input">p</label>
+        <input id="p-input" type="text" inputmode="numeric" spellcheck="false" autocomplete="off">
+        <label for="q-input">q</label>
+        <input id="q-input" type="text" inputmode="numeric" spellcheck="false" autocomplete="off">
+        <button id="btn-manual">Visualize</button>
+      </div>
+    </details>
+    <p class="note" id="input-note">
+      Runs entirely in your browser with exact BigInt arithmetic. Practical up to about 72 bit keys.
+      The search is ratio dependent: it finds a perfect base when q/p sits near a low order Farey fraction.
+    </p>
+  </section>
+
+  <p class="status" id="status" role="status"></p>
+
+  <section class="panel" id="result" hidden>
+    <div class="factors" id="factors"></div>
+    <div class="digits-block" id="digits"></div>
+    <div class="equations" id="equations"></div>
+  </section>
+
+  <section class="panel" id="diagram-section" hidden>
+    <h2>Stick multiplication in base <span id="diagram-base"></span></h2>
+    <svg id="diagram" viewBox="0 0 1000 600" role="img"
+         aria-label="Japanese multiplication diagram of p times q in base B"></svg>
+    <p class="caption" id="diagram-caption"></p>
+  </section>
+
+  <section class="panel" id="explorer" hidden>
+    <h2>The carry landscape</h2>
+    <p class="caption">
+      Column-0 carry ratio c₀/B across the whole cube-root window.
+      Vermillion marks are perfect bases: the comb teeth predicted by the continued fraction of q/p.
+      Click anywhere to inspect that base.
+    </p>
+    <canvas id="strip"></canvas>
+    <div class="explorer-controls">
+      <button id="btn-prev-perfect" title="Previous perfect base">◀ perfect</button>
+      <div class="b-field">
+        <label for="b-input">B</label>
+        <input id="b-input" type="text" inputmode="numeric" spellcheck="false">
+      </div>
+      <input id="b-slider" type="range" min="0" max="1" step="1">
+      <button id="btn-next-perfect" title="Next perfect base">perfect ▶</button>
+    </div>
+    <p class="caption" id="explorer-verdict"></p>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <p>
+    Method: perfect-base Diophantine factorization, carry equations E0–E2 solved exactly.
+    Research code, toy key sizes only. Real RSA keys keep q/p away from low order fractions,
+    which closes this surface completely.
+  </p>
+  <p><a href="https://github.com/DimitriLightMirror/japanese-diophantine">Source on GitHub</a></p>
+</footer>
+
+<script src="factor.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
