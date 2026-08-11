@@ -373,10 +373,17 @@
   /*
    * Sample c0(B)/B over [B_lo, B_hi] into `buckets` buckets.
    * value = c0/B in [0,1); 0 means perfect column-0 carry.
+   * Optional lo/hi overrides scan a different band (e.g. the 3-digit window).
    */
-  function scanC0(p, q, buckets) {
+  function scanC0(p, q, buckets, loOverride, hiOverride) {
     const n = p * q;
-    const [B_lo, B_hi] = windowBounds(n);
+    let B_lo, B_hi;
+    if (loOverride !== undefined && hiOverride !== undefined) {
+      B_lo = loOverride;
+      B_hi = hiOverride;
+    } else {
+      [B_lo, B_hi] = windowBounds(n);
+    }
     const width = B_hi - B_lo + 1n;
     const data = new Array(buckets).fill(null);
     const perBucket = width / BigInt(buckets) + 1n;
@@ -396,11 +403,104 @@
     return { data, B_lo: B_lo.toString(), B_hi: B_hi.toString() };
   }
 
+  /* --------------------------------------- three-digit (square-root) window */
+
+  /*
+   * The band sqrt(n/2) < B <= sqrt(n): n has exactly three base-B digits
+   * and the leading (B^2) digit is 1. For p < q < 2p the whole band below p
+   * is one (a1, a2) = (1, 1) segment, and its c0 = 0 bases form ONE interval
+   * (B-, p] — no comb search needed.
+   */
+  function window3Bounds(n) {
+    const lo = isqrt(n / 2n) + 1n;
+    const hi = isqrt(n);
+    return [lo > 2n ? lo : 2n, hi];
+  }
+
+  /*
+   * Exact solve at base B in the three-digit window, using only n and B.
+   * n = B^2 + d1*B + d0; when c0 = c1 = 0 the remainders g1, g2 are the roots
+   * of x^2 - d1*x + d0, and p = B + g1, q = B + g2. Self-verifies.
+   */
+  function threeDigitSolve(n, B) {
+    const d0 = n % B;
+    const rem = n - B * B - d0;
+    const out = {
+      B, d0, d1: -1n, disc: -1n, isSquare: false,
+      g1: null, g2: null, p: null, q: null, verified: false,
+    };
+    if (rem < 0n || rem % B !== 0n) return out;
+    const d1 = rem / B;
+    const disc = d1 * d1 - 4n * d0;
+    out.d1 = d1;
+    out.disc = disc;
+    if (disc < 0n) return out;
+    const r = isqrt(disc);
+    if (r * r !== disc) return out;
+    out.isSquare = true;
+    if (((d1 - r) % 2n) !== 0n) return out;
+    const g1 = (d1 - r) / 2n;
+    const g2 = (d1 + r) / 2n;
+    out.g1 = g1;
+    out.g2 = g2;
+    const pc = B + g1, qc = B + g2;
+    out.p = pc < qc ? pc : qc;
+    out.q = pc < qc ? qc : pc;
+    out.verified = pc > 1n && qc > 1n && pc * qc === n;
+    return out;
+  }
+
+  /*
+   * The c0 = 0 interval hugging p. c0 = 0 means (p%B)*(q%B) < B; in the
+   * (1,1) segment that is B^2 - (p+q+1)*B + p*q < 0, a quadratic negative
+   * between its roots, so the zeros are one interval (B-, p]. The estimate
+   * below lands inside it; the two loops settle on its exact lower edge.
+   * Returns [B-, p] as BigInts, or null.
+   */
+  function threeDigitZeroInterval(p, q) {
+    if (p > q) { const t = p; p = q; q = t; }
+    const c0z = (B) => (p % B) * (q % B) < B;
+    const s = p + q + 1n;
+    const delta = s * s - 4n * p * q; /* = (q-p)^2 + 2(p+q) + 1 */
+    let lo = (s - isqrt(delta) + 1n) / 2n;
+    if (lo < 1n) lo = 1n;
+    while (lo > 1n && c0z(lo - 1n)) lo -= 1n;
+    let guard = 0;
+    while (!c0z(lo)) {
+      lo += 1n;
+      if (lo > p || ++guard > 1000000) return null;
+    }
+    return [lo, p];
+  }
+
+  /*
+   * Perfect bases of the three-digit window: the in-window part of the zero
+   * interval. Every base there has c0 = c1 = 0 (for 1/2 <= p/q <= 2 the
+   * window lower bound sqrt(pq/2) >= (p+q)/3 forces c1 = 0), so
+   * threeDigitSolve succeeds at each of them.
+   */
+  function perfect3DigitBases(p, q) {
+    const n = p * q;
+    const iv = threeDigitZeroInterval(p, q);
+    if (!iv) return [];
+    const [wlo, whi] = window3Bounds(n);
+    let lo = iv[0] > wlo ? iv[0] : wlo;
+    const pp = p < q ? p : q;
+    let hi = iv[1] < whi ? iv[1] : whi;
+    if (hi > pp) hi = pp;
+    if (hi < lo) return [];
+    if (hi - lo + 1n > 100000n) lo = hi - 99999n; /* keep the bases hugging p */
+    const out = [];
+    for (let B = lo; B <= hi; B++) out.push(B);
+    return out;
+  }
+
   root.JD = {
     isqrt, icbrt, roundDiv, bitLength,
     reducedRatios, digitsBE, windowBounds,
     carryInfo, recoverFastPath, recoverFull,
     factorSemiprime, cfConvergents, findPerfectBases,
     nearestConvergent, scanC0,
+    window3Bounds, threeDigitSolve, threeDigitZeroInterval, perfect3DigitBases,
   };
 })(typeof window !== "undefined" ? window : globalThis);

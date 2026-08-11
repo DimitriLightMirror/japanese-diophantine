@@ -18,6 +18,15 @@ An interactive browser demo that ties two views of one idea together:
    `q/p` lies near a continued-fraction convergent `a/b`, so the solver emits the
    comb from `n` alone and tests bases until the discriminant is a perfect square.
 
+   **Three-digit window (default view).** In the tighter band `sqrt(n/2) < B <=
+   sqrt(n)`, `n` has exactly three base-`B` digits with leading digit 1. For
+   `p < q < 2p` the whole band below `p` is one `(a1, a2) = (1, 1)` segment, and
+   the `c0 = 0` condition becomes the quadratic inequality
+   `B^2 - (p+q+1)·B + p·q < 0` — so the zero-carry bases form **one interval
+   hugging p**, and every base in it also has `c1 = 0`. At any of them the
+   remainders are the roots of `x^2 - d1·x + d0 = 0`, an exact solve from `n`
+   and `B` alone (shown in the "Exact solve" panel). `B = p - 1` always works.
+
 2. **Japanese stick multiplication.** Once the factors are known, the app draws
    `p × q` in base `B` as crossing line families: one family of strokes per digit
    of `p`, one per digit of `q`, intersections counted per place column. At a
@@ -40,11 +49,14 @@ Any static file server works just as well, since the app is plain HTML/CSS/JS.
 ## What to try
 
 - Click one of the example chips (53–55 bit semiprimes with `q/p ≈ 5/4`).
-- After factorization, use **◀ perfect / perfect ▶** to jump between the perfect
-  bases in the window, or click anywhere on the carry-landscape strip to inspect
-  an ordinary base and watch the carries turn nonzero.
+- The default view is the **three-digit window**: the strip shows c₀/B over
+  `(sqrt(n/2), sqrt(n)]`, and the perfect buttons walk the zero-carry interval
+  that hugs `p`. The "Exact solve" panel recovers `p, q` from `n` and `B` alone.
+- Switch the **Window** radio to the cube-root band for the classic four-digit
+  view with the Farey comb teeth.
 - "Already know the factors?" lets you visualize any `p, q` pair directly.
-- Shareable links: append `?n=13590925537151119` to the URL to auto-factorize on load.
+- Shareable links: append `?n=13590925537151119` to auto-factorize on load,
+  plus `&mode=4d` for the cube-root window.
 
 ## Honest limits
 

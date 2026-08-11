@@ -74,9 +74,11 @@
   <section class="panel" id="explorer" hidden>
     <h2>The carry landscape</h2>
     <p class="caption">
-      Column-0 carry ratio c₀/B across the whole cube-root window.
-      Vermillion marks are perfect bases: the comb teeth predicted by the continued fraction of q/p.
-      Click anywhere to inspect that base.
+      Column-0 carry ratio c₀/B across the active window. Vermillion marks are zero-carry bases.
+      In the <strong>three-digit window</strong> (√(n/2) &lt; B ≤ √n, leading digit 1) they form
+      <em>one interval hugging p</em> — no comb needed; each of them solves n exactly.
+      In the classic <strong>cube-root window</strong> they are the comb teeth predicted by the
+      continued fraction of q/p. Click anywhere to inspect that base.
     </p>
     <canvas id="strip"></canvas>
     <div class="explorer-controls">
@@ -88,7 +90,23 @@
       <input id="b-slider" type="range" min="0" max="1" step="1">
       <button id="btn-next-perfect" title="Next perfect base">perfect ▶</button>
     </div>
+    <div class="explorer-controls mode-controls">
+      <span class="examples-label">Window</span>
+      <label><input type="radio" name="mode" value="3d" checked>
+        three-digit (√(n/2) &lt; B ≤ √n)</label>
+      <label><input type="radio" name="mode" value="4d">
+        cube-root (four digits)</label>
+    </div>
     <p class="caption" id="explorer-verdict"></p>
+  </section>
+
+  <section class="panel" id="solve3" hidden>
+    <h2>Exact solve at the current B (three-digit window)</h2>
+    <p class="caption">
+      With n = B² + d₁·B + d₀ and both carries zero, the remainders g₁, g₂ are the roots of
+      x² − d₁·x + d₀ = 0. Everything below is computed from n and B alone, then self-checked.
+    </p>
+    <div id="solve3-body"></div>
   </section>
 
 </main>

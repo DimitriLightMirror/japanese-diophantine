@@ -1,6 +1,12 @@
 /*
  * app.js — UI wiring, Japanese stick-multiplication SVG, carry landscape strip.
  * Uses the exact BigInt core in factor.js (global JD).
+ *
+ * Two carry windows:
+ *   "4d"  classic cube-root band  [cbrt(n/2), cbrt(n)]   — n has 4 base-B digits
+ *   "3d"  square-root band        (sqrt(n/2), sqrt(n)]   — n has 3 base-B digits,
+ *         leading digit 1; for p < q < 2p the c0 = 0 bases form ONE interval
+ *         hugging p, and each of them solves n exactly (see factor.js).
  */
 (function () {
   "use strict";
@@ -11,15 +17,20 @@
   const state = {
     n: null, p: null, q: null,
     B: null,
-    perfect: [],          // sorted BigInt perfect bases in the window
-    scan: null,           // c0 strip data
+    mode: "3d",           // "3d" | "4d"
+    perfect: [],          // sorted BigInt perfect bases in the active window
+    scan: null,           // c0 strip data for the active window
     solveInfo: null,      // { method, stats, ms }
   };
+
+  function windowForMode(n, mode) {
+    return (mode || state.mode) === "3d" ? JD.window3Bounds(n) : JD.windowBounds(n);
+  }
 
   /* ------------------------------------------------------------ formatting */
 
   function fmt(x) {
-    return BigInt(x).toLocaleString("en-US").replace(/,/g, "\u2009");
+    return BigInt(x).toLocaleString("en-US").replace(/,/g, " ");
   }
 
   function setStatus(msg, isError) {
@@ -48,9 +59,8 @@
   /* ============================================================ diagram ==== */
 
   /*
-   * Geometry: p and q each have two digits in base B inside the cube-root
-   * window: p = a1·B + g1, q = a2·B + g2. Four crossing clusters form a
-   * diamond:
+   * Geometry: p and q each have two digits in base B inside the window:
+   * p = a1·B + g1, q = a2·B + g2. Four crossing clusters form a diamond:
    *
    *        (g1·a2)  B^1
    *   (a1·a2)  B^2        (g1·g2)  B^0
@@ -116,14 +126,31 @@
   function renderDiagram(info) {
     const svg = $("diagram");
     svg.textContent = "";
+    const is3d = state.mode === "3d";
 
     const pDigits = [info.a1, info.g1];   // high, low
     const qDigits = [info.a2, info.g2];
     const pNames = ["a₁", "g₁"];
     const qNames = ["a₂", "g₂"];
 
+    /* Result digit cells along the bottom: 4 columns in the cube-root band,
+       3 in the square-root band (no B^3 column there). */
+    const cells = is3d
+      ? [
+          { x: 265, place: "B²", val: info.digit2 },
+          { x: 490, place: "B¹", val: info.digit1 },
+          { x: 715, place: "B⁰", val: info.digit0 },
+        ]
+      : [
+          { x: 190, place: "B³", val: info.lead },
+          { x: 340, place: "B²", val: info.digit2 },
+          { x: 490, place: "B¹", val: info.digit1 },
+          { x: 640, place: "B⁰", val: info.digit0 },
+        ];
+    const cellX = cells.map((c) => c.x);
+
     /* Grid guide: faint place columns */
-    for (const x of [190, 340, 490, 640]) {
+    for (const x of cellX) {
       el("line", { x1: x, y1: 500, x2: x, y2: 512, stroke: COL_FAINT, "stroke-width": 1 }, svg);
     }
 
@@ -213,13 +240,6 @@
       }
     }
 
-    /* Result digit cells along the bottom */
-    const cells = [
-      { x: 190, place: "B³", val: info.lead },
-      { x: 340, place: "B²", val: info.digit2 },
-      { x: 490, place: "B¹", val: info.digit1 },
-      { x: 640, place: "B⁰", val: info.digit0 },
-    ];
     for (const cell of cells) {
       el("rect", {
         x: cell.x - 46, y: 518, width: 92, height: 40, rx: 6,
@@ -237,12 +257,14 @@
       pl.textContent = "place " + cell.place;
     }
 
-    /* Carry arrows between columns */
+    /* Carry arrows between columns (no c2 out of B^2 in the 3-digit band) */
+    const b0 = cellX[cellX.length - 1];
+    const b1 = cellX[cellX.length - 2];
     const carries = [
-      { from: 640, to: 490, c: info.c0, name: "c₀" },
-      { from: 490, to: 340, c: info.c1, name: "c₁" },
-      { from: 340, to: 190, c: info.c2, name: "c₂" },
+      { from: b0, to: b1, c: info.c0, name: "c₀" },
+      { from: b1, to: cellX[cellX.length - 3], c: info.c1, name: "c₁" },
     ];
+    if (!is3d) carries.push({ from: cellX[1], to: cellX[0], c: info.c2, name: "c₂" });
     for (const { from, to, c, name } of carries) {
       const zero = c === 0n;
       const color = zero ? COL_SHU : COL_INK;
@@ -270,11 +292,17 @@
     /* Caption */
     const cap = $("diagram-caption");
     if (info.isPerfect) {
-      cap.innerHTML = "Perfect base. Both low carries vanish, so the low digits multiply clean: " +
-        "g₁·g₂ = d₀ exactly. This is the base the Diophantine solver was looking for.";
+      cap.innerHTML = (is3d
+        ? "Zero-carry base of the three-digit window. Both low carries vanish, so " +
+          "n collapses to three digits [1, d₁, d₀] and the quadratic below recovers " +
+          "g₁ and g₂ from n and B alone. "
+        : "Perfect base. Both low carries vanish, so the low digits multiply clean: " +
+          "g₁·g₂ = d₀ exactly. ") +
+        "This is the base the Diophantine solver was looking for.";
     } else {
-      cap.innerHTML = "Not a perfect base: the strokes still multiply correctly, " +
-        "but carries leak between columns and the carry equations no longer collapse.";
+      cap.innerHTML = "Not a zero-carry base: the strokes still multiply correctly, " +
+        "but carries leak between columns and the carry equations no longer collapse." +
+        (is3d ? " The c₀ = 0 bases form one interval hugging p — step onto it with the perfect buttons." : "");
     }
   }
 
@@ -322,6 +350,7 @@
     const { p, q, B } = state;
     const info = JD.carryInfo(p, q, B);
     const n = state.n;
+    const is3d = state.mode === "3d";
 
     /* factors line */
     const f = $("factors");
@@ -356,7 +385,8 @@
     if (info.isPerfect) {
       const seal = document.createElement("span");
       seal.className = "verdict-seal";
-      seal.textContent = "完全基底 · perfect base · B = " + fmt(B);
+      seal.textContent = (is3d ? "零桁基底 · zero-carry base" : "完全基底 · perfect base") +
+        " · B = " + fmt(B);
       verdict.appendChild(seal);
     } else {
       const plain = document.createElement("span");
@@ -367,12 +397,16 @@
     }
     f.appendChild(verdict);
 
-    /* digits block */
+    /* digits block: n has 4 cells in the cube-root band, 3 in the sqrt band */
     const d = $("digits");
     d.textContent = "";
     d.appendChild(digitRow("p", [info.a1, info.g1], ["B¹", "B⁰"], true));
     d.appendChild(digitRow("q", [info.a2, info.g2], ["B¹", "B⁰"], true));
-    d.appendChild(digitRow("n = p·q", [info.lead, info.d2, info.d1, info.d0], ["B³", "B²", "B¹", "B⁰"], false));
+    if (is3d) {
+      d.appendChild(digitRow("n = p·q", [info.d2, info.d1, info.d0], ["B²", "B¹", "B⁰"], false));
+    } else {
+      d.appendChild(digitRow("n = p·q", [info.lead, info.d2, info.d1, info.d0], ["B³", "B²", "B¹", "B⁰"], false));
+    }
 
     /* equations */
     const eq = $("equations");
@@ -389,7 +423,9 @@
     eq.appendChild(equationCard("E2",
       "a₁a₂ + c₁ = " + fmt(info.a1) + "·" + fmt(info.a2) + " + " + fmt(info.c1) +
       " = " + fmt(info.col2) + " = " + carrySpan(info.c2) + "·B + " + fmt(info.d2) +
-      "   → c₂ = " + fmt(info.c2) + " is the leading digit", false));
+      (is3d
+        ? "   → c₂ = 0: no B³ column in the three-digit window"
+        : "   → c₂ = " + fmt(info.c2) + " is the leading digit"), false));
 
     $("result").hidden = false;
     renderDiagram(info);
@@ -400,13 +436,59 @@
     const ev = $("explorer-verdict");
     if (info.isPerfect) {
       const idx = state.perfect.findIndex((x) => x === B);
-      ev.textContent = "B = " + fmt(B) + " is perfect (c₀ = c₁ = 0)" +
-        (idx >= 0 ? ", tooth " + (idx + 1) + " of " + state.perfect.length + " in the window." : ".");
+      ev.textContent = "B = " + fmt(B) + " has c₀ = c₁ = 0" +
+        (idx >= 0 ? ", base " + (idx + 1) + " of " + state.perfect.length +
+          (is3d ? " in the zero interval." : " in the window.") : ".") +
+        (is3d ? " The exact solve panel below recovers p and q from n and B alone." : "");
     } else {
       ev.textContent = "B = " + fmt(B) + ": c₀ = " + fmt(info.c0) + ", c₁ = " + fmt(info.c1) +
-        ". Move onto a vermillion tooth to see the equations collapse.";
+        (is3d
+          ? ". The c₀ = 0 bases form one interval hugging p — step onto it with the perfect buttons."
+          : ". Move onto a vermillion tooth to see the equations collapse.");
     }
     updatePerfectButtons();
+    renderSolve3(info);
+  }
+
+  /* ------------------------------------------- exact 3-digit solve panel ==== */
+
+  function renderSolve3(info) {
+    const panel = $("solve3");
+    if (state.mode !== "3d") { panel.hidden = true; return; }
+    const body = $("solve3-body");
+    body.textContent = "";
+
+    const s = JD.threeDigitSolve(state.n, state.B);
+    const eq = document.createElement("div");
+    eq.className = "equations";
+    body.appendChild(eq);
+
+    eq.appendChild(equationCard("digits",
+      "n in base B = [1, d₁, d₀] with d₁ = " + fmt(s.d1 < 0n ? 0n : s.d1) +
+      ", d₀ = " + fmt(s.d0) + "   (n = B² + d₁·B + d₀)", false));
+
+    if (s.d1 < 0n) {
+      eq.appendChild(equationCard("solve",
+        "B is above the three-digit window for this n — no exact solve here.", false));
+    } else {
+      eq.appendChild(equationCard("quadratic",
+        "x² − d₁·x + d₀ = 0   →   discriminant Δ = d₁² − 4·d₀ = " + fmt(s.disc),
+        s.isSquare));
+      if (s.verified) {
+        eq.appendChild(equationCard("roots",
+          "Δ is a perfect square: g₁ = " + fmt(s.g1) + ", g₂ = " + fmt(s.g2) +
+          "   →   p = B + g₁ = " + fmt(s.p) + ", q = B + g₂ = " + fmt(s.q), true));
+        eq.appendChild(equationCard("check",
+          "self-check: (" + fmt(state.B) + " + " + fmt(s.g1) + ")·(" + fmt(state.B) +
+          " + " + fmt(s.g2) + ") = " + fmt(state.n) + "  ✓", true));
+      } else {
+        eq.appendChild(equationCard("roots",
+          "Δ is not a perfect square here (c₀ = " + fmt(info.c0) + " > 0 leaks into d₁). " +
+          "The c₀ = 0 bases form one interval hugging p — press a perfect button or set B = p − 1.",
+          false));
+      }
+    }
+    panel.hidden = false;
   }
 
   /* =========================================================== explorer ==== */
@@ -507,7 +589,7 @@
   }
 
   function setB(B) {
-    const [lo, hi] = JD.windowBounds(state.n);
+    const [lo, hi] = windowForMode(state.n);
     if (B < lo) B = lo;
     if (B > hi) B = hi;
     state.B = B;
@@ -520,6 +602,53 @@
     renderStrip();
   }
 
+  /* ------------------------------------------------------------ mode switch */
+
+  function syncModeRadio() {
+    const r = document.querySelector('input[name="mode"][value="' + state.mode + '"]');
+    if (r) r.checked = true;
+  }
+
+  function refreshExplorer(B0) {
+    const { p, q, n } = state;
+    const [lo, hi] = windowForMode(n);
+    state.perfect = state.mode === "3d"
+      ? JD.perfect3DigitBases(p, q)
+      : JD.findPerfectBases(p, q);
+    state.scan = JD.scanC0(p, q, 260, lo, hi);
+
+    if (B0 === null || B0 === undefined) {
+      if (state.mode === "3d") {
+        /* land on p-1: unconditionally c0 = 0, and the diagram keeps g1 = 1 */
+        B0 = state.perfect.includes(p - 1n) ? p - 1n
+          : state.perfect.length ? state.perfect[state.perfect.length - 1]
+          : p - 1n;
+      } else if (state.solveInfo && state.solveInfo.B && state.perfect.includes(state.solveInfo.B)) {
+        B0 = state.solveInfo.B;
+      } else if (state.perfect.length) {
+        B0 = state.perfect[Math.floor(state.perfect.length / 2)];
+      } else {
+        B0 = (lo + hi) / 2n;
+      }
+    }
+    setB(B0);
+  }
+
+  function onModeChange(mode) {
+    state.mode = mode;
+    syncModeRadio();
+    if (!state.n) return;
+    if (mode === "3d" && state.q >= 2n * state.p) {
+      setStatus("q ≥ 2p: the three-digit band is not a single (1,1) segment for this ratio; " +
+        "staying in the cube-root window.", true);
+      state.mode = "4d";
+      syncModeRadio();
+      return;
+    }
+    refreshExplorer(null);
+    $("solve3").hidden = state.mode !== "3d";
+  }
+
   /* ============================================================= driver ==== */
 
   function acceptFactors(p, q, solveInfo) {
@@ -527,31 +656,30 @@
     state.n = n; state.p = p; state.q = q;
     state.solveInfo = solveInfo;
 
-    /* balance guard: both factors must have two digits in the window */
-    const [lo] = JD.windowBounds(n);
-    if (q >= lo * lo) {
+    /* the three-digit theorem needs q < 2p */
+    if (state.mode === "3d" && q >= 2n * p) {
+      state.mode = "4d";
+      syncModeRadio();
+      setStatus("q ≥ 2p: the three-digit band is not a single (1,1) segment for this ratio; " +
+        "using the cube-root window instead.", true);
+    }
+
+    /* balance guard (cube-root band): both factors must have two digits */
+    const [lo] = windowForMode(n);
+    if (state.mode === "4d" && q >= lo * lo) {
       setStatus("These factors are too unbalanced for the cube-root window: q would need more than two base-B digits. Try a balanced semiprime (p < q < 2p).", true);
       return;
     }
 
     setStatus("Scanning for perfect bases…");
-    state.perfect = JD.findPerfectBases(p, q);
-    state.scan = JD.scanC0(p, q, 260);
-
-    let B0 = null;
-    if (solveInfo && solveInfo.B && state.perfect.includes(solveInfo.B)) {
-      B0 = solveInfo.B;
-    } else if (state.perfect.length) {
-      B0 = state.perfect[Math.floor(state.perfect.length / 2)];
-    } else {
-      const [l, h] = JD.windowBounds(n);
-      B0 = (l + h) / 2n;
-    }
     $("explorer").hidden = false;
-    setB(B0);
+    refreshExplorer(null);
 
     if (state.perfect.length) {
-      setStatus("Done. " + state.perfect.length + " perfect bases in the window; showing B = " + fmt(state.B) + ".");
+      setStatus("Done. " + state.perfect.length +
+        (state.mode === "3d" ? " zero-carry bases in the three-digit window (one interval hugging p)"
+          : " perfect bases in the window") +
+        "; showing B = " + fmt(state.B) + ".");
     } else {
       setStatus("Factors verified, but no perfect base exists in the window for this ratio. " +
         "Explore the carry landscape below; every base keeps nonzero carries.");
@@ -571,6 +699,7 @@
     $("result").hidden = true;
     $("diagram-section").hidden = true;
     $("explorer").hidden = true;
+    $("solve3").hidden = true;
     setStatus("Searching the Farey comb for a perfect base…");
 
     /* let the status paint before the synchronous search */
@@ -623,6 +752,10 @@
     $("btn-prev-perfect").addEventListener("click", () => stepPerfect(-1));
     $("btn-next-perfect").addEventListener("click", () => stepPerfect(1));
 
+    document.querySelectorAll('input[name="mode"]').forEach((r) => {
+      r.addEventListener("change", () => onModeChange(r.value));
+    });
+
     $("b-input").addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       const B = parseBig($("b-input").value);
@@ -643,8 +776,13 @@
 
     window.addEventListener("resize", () => renderStrip());
 
-    /* shareable link: ?n=13590925537151119 auto-factorizes on load */
+    /* shareable links: ?n=13590925537151119&mode=3d|4d */
     const params = new URLSearchParams(location.search);
+    const modeParam = params.get("mode");
+    if (modeParam === "3d" || modeParam === "4d") {
+      state.mode = modeParam;
+      syncModeRadio();
+    }
     const nParam = params.get("n");
     if (nParam) {
       $("n-input").value = nParam;
